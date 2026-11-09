@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>POS Voting Request Generator</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    :root { font-family: Inter, "Segoe UI", Arial, sans-serif; color: #182230; background: #f3f6fa; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { background: #102a43; color: white; padding: 25px max(22px, calc((100% - 1120px)/2)); }
+    header h1 { margin: 0 0 7px; font-size: clamp(1.4rem, 3vw, 2rem); }
+    header p { margin: 0; color: #d5e4f2; }
+    main { max-width: 1120px; margin: 24px auto 48px; padding: 0 20px; }
+    .privacy { border: 1px solid #9bc8ad; background: #eef9f1; color: #245b36; border-radius: 10px; padding: 13px 16px; margin-bottom: 18px; }
+    .layout { display: grid; grid-template-columns: minmax(300px, 0.9fr) minmax(360px, 1.1fr); gap: 18px; align-items: start; }
+    .card { background: white; border: 1px solid #dce3eb; border-radius: 12px; padding: 20px; box-shadow: 0 3px 12px #102a430a; }
+    h2 { font-size: 1.1rem; margin: 0 0 16px; }
+    h3 { font-size: 1rem; margin: 18px 0 8px; }
+    label { display: block; font-weight: 600; font-size: .92rem; margin: 13px 0 6px; }
+    input, select, button { font: inherit; }
+    input[type="text"], input[type="number"], input[type="file"], select { width: 100%; border: 1px solid #b8c4d1; border-radius: 7px; padding: 10px 11px; background: white; color: #182230; }
+    input:focus, select:focus, button:focus-visible { outline: 3px solid #8fc5ff; outline-offset: 2px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .hint { color: #5d6b7b; font-size: .84rem; margin: 6px 0 0; }
+    .check-row { display: flex; align-items: center; gap: 9px; margin-top: 18px; }
+    .check-row label { margin: 0; }
+    .guidance-field { display: grid; grid-template-columns: minmax(115px, .55fr) 1fr; gap: 10px; align-items: end; margin-top: 10px; }
+    .guidance-field label { margin-top: 0; }
+    .guidance-field input { margin-top: 6px; }
+    button { border: 0; border-radius: 7px; padding: 10px 14px; cursor: pointer; font-weight: 650; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .primary { background: #1769aa; color: white; }
+    .secondary { background: #e7eef5; color: #183b56; }
+    .danger { background: transparent; color: #a12828; padding: 7px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+    .summary { padding: 12px; border-radius: 8px; background: #f2f6fa; margin: 12px 0; min-height: 44px; }
+    .preview-head { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+    .preview-head label { flex: 1; }
+    pre { margin: 0; padding: 15px; min-height: 340px; max-height: 62vh; overflow: auto; border-radius: 8px; background: #101b2a; color: #edf4fb; font: 13px/1.5 Consolas, "SFMono-Regular", monospace; white-space: pre; }
+    .empty { color: #657589; padding: 30px 12px; text-align: center; }
+    .status { min-height: 1.3em; color: #245b36; margin: 10px 0 0; font-size: .9rem; }
+    .error { color: #a12828; }
+    [hidden] { display: none !important; }
+    @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } pre { min-height: 250px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>POS Voting Request Generator</h1>
+    <p>Turn a spreadsheet of probe IDs into clearly separated request batches.</p>
+  </header>
+  <main>
+    <div class="privacy"><strong>File handling:</strong> your spreadsheet is processed in this browser. The app does not upload it or send requests to the POS voting API.</div>
+    <div class="layout">
+      <section class="card" aria-labelledby="setup-title">
+        <h2 id="setup-title">1. Choose probes and request settings</h2>
+        <label for="file">Excel or CSV file</label>
+        <input id="file" type="file" accept=".xlsx,.xlsm,.xls,.csv">
+        <p class="hint">Supported: .xlsx, .xlsm, .xls, and .csv. The first row is treated as column headers.</p>
+
+        <div class="row">
+          <div><label for="sheet">Worksheet</label><select id="sheet" disabled><option>Load a spreadsheet first</option></select></div>
+          <div><label for="column">Probe ID column</label><select id="column" disabled><option>Load a spreadsheet first</option></select></div>
+        </div>
+
+        <h3>Request fields</h3>
+        <label for="project">Project name</label>
+        <input id="project" type="text" placeholder="Enter the project name" autocomplete="off">
+        <div class="row">
+          <div><label for="labelType">Label type</label><select id="labelType"><option>product</option><option>price</option><option selected>posm</option></select></div>
+          <div><label for="queue">Smart queue</label><select id="queue"><option selected>factory</option><option>engine_jobs</option></select></div>
+        </div>
+        <div class="row">
+          <div><label for="maxProbes">Max probes to include</label><input id="maxProbes" type="number" min="0" step="1" value="0"><p class="hint">0 means all valid unique IDs.</p></div>
+          <div><label for="batchSize">Probes per batch (max 250)</label><input id="batchSize" type="number" min="1" max="250" step="1" value="100"><p class="hint">The batch limit is locked at 250.</p></div>
+        </div>
+        <div class="row">
+          <div><label for="flow">Flow initializer (optional)</label><input id="flow" type="text" value="undefined" autocomplete="off"></div>
+          <div><label for="subSource">Sub source (optional)</label><input id="subSource" type="text" value="fully_voting_probe_posm" autocomplete="off"></div>
+        </div>
+
+        <div class="check-row"><input id="includeGuidance" type="checkbox"><label for="includeGuidance">Include guidance</label></div>
+        <p class="hint">Each field becomes an array. Enter comma-separated values, for example: front, shelf.</p>
+        <div id="guidanceFields" hidden></div>
+        <div class="actions"><button id="addGuidance" class="secondary" type="button" hidden>Add guidance field</button><button id="build" class="primary" type="button" disabled>Build request batches</button></div>
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="card" aria-labelledby="preview-title">
+        <h2 id="preview-title">2. Preview and export</h2>
+        <div id="empty" class="empty">Choose a spreadsheet to get started.</div>
+        <div id="results" hidden>
+          <div id="summary" class="summary"></div>
+          <div class="preview-head"><label for="batch">Request body</label><select id="batch" disabled></select><button id="copy" class="secondary" type="button">Copy JSON</button></div>
+          <pre id="json" aria-label="Selected request body"></pre>
+          <div class="actions"><button id="export" class="primary" type="button">Export all batches to TXT</button></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const $ = (id) => document.getElementById(id);
+      let workbook = null;
+      let headers = [];
+      let rows = [];
+      let bodies = [];
+      let guidanceCount = 0;
+
+      function status(message, isError = false) {
+        $('status').textContent = message;
+        $('status').classList.toggle('error', isError);
+      }
+
+      function setSelect(select, options, selectedValue) {
+        select.replaceChildren();
+        options.forEach(({value, label}) => {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = label;
+          select.append(option);
+        });
+        if (selectedValue !== undefined) select.value = selectedValue;
+      }
+
+      function showWorksheet() {
+        if (!workbook) return;
+        const sheetName = $('sheet').value;
+        const worksheet = workbook.Sheets[sheetName];
+        const matrix = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false, defval: ''});
+        if (!matrix.length) throw new Error('The selected worksheet is empty.');
+        headers = matrix[0].map((value, index) => String(value || `Column ${index + 1}`).trim());
+        rows = matrix.slice(1);
+        const columnOptions = headers.map((name, index) => ({value: String(index), label: `${index + 1}: ${name || '(blank header)'}`}));
+        const preferred = headers.findIndex((name) => ['probe_id', 'probeid', 'probe_pk', 'probe_fk'].includes(name.toLowerCase().replaceAll(' ', '_')));
+        setSelect($('column'), columnOptions, String(preferred >= 0 ? preferred : 0));
+        $('column').disabled = false;
+        $('build').disabled = false;
+        $('empty').hidden = false;
+        $('empty').textContent = `${rows.length.toLocaleString()} spreadsheet row(s) loaded. Review the settings, then build the batches.`;
+        $('results').hidden = true;
+        status(`Loaded ${sheetName}. Select the probe ID column if it was not detected automatically.`);
+      }
+
+      $('file').addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        workbook = null;
+        $('sheet').disabled = true;
+        $('column').disabled = true;
+        $('build').disabled = true;
+        $('results').hidden = true;
+        $('empty').hidden = false;
+        if (!file) { $('empty').textContent = 'Choose a spreadsheet to get started.'; return; }
+        if (typeof XLSX === 'undefined') { status('The spreadsheet reader could not load. Check access to cdn.sheetjs.com.', true); return; }
+        try {
+          const data = await file.arrayBuffer();
+          workbook = XLSX.read(data, {type: 'array'});
+          const names = workbook.SheetNames.map((name) => ({value: name, label: name}));
+          setSelect($('sheet'), names);
+          $('sheet').disabled = false;
+          showWorksheet();
+        } catch (error) {
+          status(`Could not read the file: ${error.message || error}`, true);
+        }
+      });
+
+      $('sheet').addEventListener('change', () => {
+        try { showWorksheet(); } catch (error) { status(error.message, true); }
+      });
+
+      function addGuidanceField() {
+        guidanceCount += 1;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'guidance-field';
+        wrapper.dataset.guidanceIndex = String(guidanceCount);
+        const label = document.createElement('label');
+        label.textContent = `additionalProp${guidanceCount}`;
+        const inputWrap = document.createElement('div');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.placeholder = 'Comma-separated values';
+        input.setAttribute('aria-label', `Values for additionalProp${guidanceCount}`);
+        const remove = document.createElement('button');
+        remove.className = 'danger';
+        remove.type = 'button';
+        remove.textContent = 'Remove';
+        remove.addEventListener('click', () => {
+          wrapper.remove();
+          renumberGuidance();
+        });
+        inputWrap.append(input, remove);
+        wrapper.append(label, inputWrap);
+        $('guidanceFields').append(wrapper);
+        renumberGuidance();
+      }
+
+      function renumberGuidance() {
+        const fields = [...$('guidanceFields').querySelectorAll('.guidance-field')];
+        guidanceCount = fields.length;
+        fields.forEach((field, index) => {
+          const key = `additionalProp${index + 1}`;
+          field.dataset.guidanceIndex = String(index + 1);
+          field.querySelector('label').textContent = key;
+          field.querySelector('input').setAttribute('aria-label', `Values for ${key}`);
+        });
+      }
+
+      $('includeGuidance').addEventListener('change', (event) => {
+        const enabled = event.target.checked;
+        $('guidanceFields').hidden = !enabled;
+        $('addGuidance').hidden = !enabled;
+        if (enabled && !$('guidanceFields').children.length) addGuidanceField();
+        if (!enabled) { $('guidanceFields').replaceChildren(); guidanceCount = 0; }
+      });
+      $('addGuidance').addEventListener('click', addGuidanceField);
+
+      function parseProbeId(value) {
+        let text = String(value ?? '').trim();
+        if (!text) return null;
+        if (/^\d+\.0+$/.test(text)) text = text.replace(/\.0+$/, '');
+        if (!/^\d+$/.test(text)) return null;
+        const number = Number(text);
+        return Number.isSafeInteger(number) && number > 0 ? number : null;
+      }
+
+      function buildBodies() {
+        const project = $('project').value.trim();
+        const limit = Number($('maxProbes').value);
+        const batchSize = Number($('batchSize').value);
+        const column = Number($('column').value);
+        if (!project) throw new Error('Enter a project name.');
+        if (!Number.isInteger(limit) || limit < 0) throw new Error('Max probes must be a whole number of 0 or more.');
+        if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 250) throw new Error('Batch size must be a whole number from 1 to 250.');
+        if (!Number.isInteger(column) || column < 0) throw new Error('Choose the probe ID column.');
+
+        const probeIds = [];
+        const seen = new Set();
+        let invalid = 0;
+        let duplicates = 0;
+        for (const row of rows) {
+          const raw = row[column];
+          const id = parseProbeId(raw);
+          if (id === null) { if (String(raw ?? '').trim()) invalid += 1; continue; }
+          if (seen.has(id)) { duplicates += 1; continue; }
+          seen.add(id);
+          probeIds.push(id);
+        }
+        const selected = limit ? probeIds.slice(0, limit) : probeIds;
+        if (!selected.length) throw new Error('No valid probe IDs found in the selected column.');
+        const common = {
+          project_name: project,
+          label_type: $('labelType').value,
+          smart_queue: $('queue').value
+        };
+        const flow = $('flow').value.trim();
+        const subSource = $('subSource').value.trim();
+        if (flow) common.flow_initializer = flow;
+        if (subSource) common.sub_source = subSource;
+        if ($('includeGuidance').checked) {
+          const guidanceObject = {};
+          [...$('guidanceFields').querySelectorAll('.guidance-field')].forEach((field, index) => {
+            const values = field.querySelector('input').value.split(',').map((item) => item.trim()).filter(Boolean);
+            guidanceObject[`additionalProp${index + 1}`] = values;
+          });
+          common.guidance = [guidanceObject];
+        }
+        const batches = [];
+        for (let start = 0; start < selected.length; start += batchSize) {
+          batches.push({...common, probe_ids: selected.slice(start, start + batchSize)});
+        }
+        return {batches, total: selected.length, invalid, duplicates, available: probeIds.length};
+      }
+
+      function showBatch() {
+        const index = Number($('batch').value) || 0;
+        $('json').textContent = JSON.stringify(bodies[index], null, 2);
+      }
+
+      $('build').addEventListener('click', () => {
+        try {
+          const result = buildBodies();
+          bodies = result.batches;
+          setSelect($('batch'), bodies.map((body, index) => ({value: String(index), label: `Batch ${index + 1} of ${bodies.length} (${body.probe_ids.length} probes)`})), '0');
+          $('batch').disabled = false;
+          $('summary').textContent = `${result.total.toLocaleString()} probes selected from ${result.available.toLocaleString()} unique valid IDs · ${bodies.length} batch(es) · ${result.invalid} invalid row(s) skipped · ${result.duplicates} duplicate(s) skipped`;
+          $('empty').hidden = true;
+          $('results').hidden = false;
+          showBatch();
+          status(`Built ${bodies.length} request body/bodies.`);
+        } catch (error) { status(error.message, true); }
+      });
+      $('batch').addEventListener('change', showBatch);
+      $('copy').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText($('json').textContent);
+          status('Selected batch copied as JSON.');
+        } catch { status('Clipboard access was blocked. Select and copy the JSON from the preview.', true); }
+      });
+      $('export').addEventListener('click', () => {
+        const separator = '='.repeat(78);
+        const divider = '#'.repeat(78);
+        const output = [
+          'POS VOTING REQUEST BODIES',
+          `Project: ${$('project').value.trim()}`,
+          `Total batches: ${bodies.length}`,
+          `Total probes: ${bodies.reduce((sum, body) => sum + body.probe_ids.length, 0)}`,
+          '', 'Copy each JSON object as a separate request body.', ''
+        ];
+        let position = 1;
+        bodies.forEach((body, index) => {
+          const end = position + body.probe_ids.length - 1;
+          output.push(separator, `BATCH ${String(index + 1).padStart(3, '0')} OF ${String(bodies.length).padStart(3, '0')} | PROBES ${position.toLocaleString()}–${end.toLocaleString()} | COUNT: ${body.probe_ids.length}`, separator, JSON.stringify(body, null, 2), divider, `END OF BATCH ${String(index + 1).padStart(3, '0')}`, divider, '');
+          position = end + 1;
+        });
+        const blob = new Blob([output.join('\n')], {type: 'text/plain;charset=utf-8'});
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `${$('project').value.trim() || 'pos-voting'}_request_bodies.txt`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        status(`Exported ${bodies.length} labeled batch(es) to TXT.`);
+      });
+
+      $('batchSize').addEventListener('input', () => {
+        if (Number($('batchSize').value) > 250) $('batchSize').value = 250;
+        if (Number($('batchSize').value) < 1 && $('batchSize').value !== '') $('batchSize').value = 1;
+      });
+    })();
+  </script>
+</body>
+</html>
